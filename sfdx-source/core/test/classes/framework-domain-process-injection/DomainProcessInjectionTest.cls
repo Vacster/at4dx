@@ -258,7 +258,49 @@ public class DomainProcessInjectionTest
             }
         }
     }
-    
+
+    @IsTest
+    static void verifyEventBusRetryableExceptionPropagated()
+    {
+        List<DomainProcessBinding__mdt> config = new List<DomainProcessBinding__mdt>
+        {
+            new DomainProcessBinding__mdt(
+                Label = 'DallasAccountCriteria',
+                ClassToInject__c = 'DomainProcessInjectionTest.RetryableExceptionActionTest',
+                IsActive__c = true,
+                OrderOfExecution__c = 100853107.10,
+                ProcessContext__c = 'TriggerExecution',
+                RelatedDomainBindingSObject__c = AT4DXImmediateMessage__e.SObjectType.getDescribe().name,
+                TriggerOperation__c = 'After_Insert',
+                ExecuteAsynchronous__c = false,
+                Type__c = 'Action'
+            )
+        };
+
+        DomainProcessCoordinator.setMockDomainProcessBindings(config);
+
+        Exception caughtException;
+
+        Test.startTest();
+        List<AT4DXImmediateMessage__e> messages = new List<AT4DXImmediateMessage__e>
+        {
+            new AT4DXImmediateMessage__e(EventName__c = 'Test1')
+        };
+
+        fflib_SObjectDomain.Test.Database.onInsert(messages);
+        try
+        {
+            fflib_SObjectDomain.triggerHandler(DomainProcessInjectionTest.AT4DXImmediateMessageTestDomainConstructor.class);
+        } catch (Exception e)
+        {
+            caughtException = e;
+        }
+        Test.stopTest();
+
+        Assert.isInstanceOfType(caughtException, EventBus.RetryableException.class);
+        Assert.areEqual('Test retryable exception', caughtException.getMessage());
+    }
+
     @isTest
     private static void DomainProcessInjectionMethodTest() 
     { 
@@ -351,6 +393,18 @@ public class DomainProcessInjectionTest
         }
     }
 
+    public with sharing class AT4DXImmediateMessageTestDomain
+    extends ApplicationSObjectDomain
+    {
+        public AT4DXImmediateMessageTestDomain(List<AT4DXImmediateMessage__e> records)
+        {
+            super(records);
+
+            // don't enforce CRUD security for Account records
+            this.Configuration.disableTriggerCRUDSecurity();
+        }
+    }
+
     public class AccountsTestDomainConstructor
             implements fflib_SObjectDomain.IConstructable
     {
@@ -358,6 +412,15 @@ public class DomainProcessInjectionTest
         {
             DomainProcessInjectionTest.lastConstructed = new AccountsTestDomain(sObjectList);
             return DomainProcessInjectionTest.lastConstructed;
+        }
+    }
+
+    public class AT4DXImmediateMessageTestDomainConstructor
+            implements fflib_SObjectDomain.IConstructable
+    {
+        public fflib_SObjectDomain Construct(List<SObject> sObjectList)
+        {
+            return new AT4DXImmediateMessageTestDomain(sObjectList);
         }
     }
 
@@ -446,6 +509,14 @@ public class DomainProcessInjectionTest
                 accountRecord.BillingState = 'Virginia';
                 DomainProcessInjectionTest.processedRecords.add(accountRecord);
             }
+        }
+    }
+
+    public class RetryableExceptionActionTest extends DomainProcessAbstractAction
+    {
+        public override void runInProcess()
+        {
+            throw new EventBus.RetryableException('Test retryable exception');
         }
     }
 

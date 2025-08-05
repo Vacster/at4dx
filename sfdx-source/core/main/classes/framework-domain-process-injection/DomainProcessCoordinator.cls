@@ -480,6 +480,11 @@ public class DomainProcessCoordinator
 
                             actionClazz.run();
                         }
+                        catch (EventBus.RetryableException e)
+                        {
+                            system.debug(LoggingLevel.WARN, 'EventBus.RetryableException caught, rethrowing as is');
+                            throw e;
+                        }
                         catch (Exception e)
                         {
                             system.debug( e );
